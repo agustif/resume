@@ -1,0 +1,11 @@
+{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-05-07T10:00:00.000Z","cwd":"/tmp/claude-demo","gitBranch":"main","message":{"role":"user","content":[{"type":"text","text":"refactor the auth module"}]}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-05-07T10:00:01.000Z","cwd":"/tmp/claude-demo","message":{"role":"assistant","content":[{"type":"thinking","thinking":"secret thoughts"},{"type":"text","text":"I'll inspect auth next."}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-05-07T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls src/auth"}}]}}
+{"type":"user","uuid":"u2","parentUuid":"a2","timestamp":"2026-05-07T10:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"login.ts\nlogout.ts"}]}}
+{"type":"attachment","uuid":"att1","parentUuid":"u2","timestamp":"2026-05-07T10:00:03.500Z","attachment":{"type":"file","path":"src/auth/login.ts"}}
+{"type":"progress","uuid":"prog1","parentUuid":"att1","timestamp":"2026-05-07T10:00:03.750Z","data":{"status":"running"}}
+{"type":"assistant","uuid":"a3","parentUuid":"prog1","timestamp":"2026-05-07T10:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Found login and logout modules."}]}}
+{"type":"user","uuid":"u3","parentUuid":"a3","timestamp":"2026-05-07T10:00:05.000Z","cwd":"/tmp/claude-demo","message":{"role":"user","content":[{"type":"text","text":"also add rate limiting to login"}]}}
+{"type":"assistant","uuid":"a4","parentUuid":"u3","timestamp":"2026-05-07T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll add rate limiting next."}]}}
+{"type":"ai-title","aiTitle":"Auth refactor"}
+not a json line

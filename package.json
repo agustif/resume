@@ -1,0 +1,30 @@
+{
+  "name": "resume-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Universal coding-agent session interchange CLI (handoff / transplant)",
+  "bin": {
+    "resume": "./dist/cli/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/main.ts",
+    "resume": "tsx src/cli/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/**/*.test.ts",
+    "prepare": "./scripts/prepare-effect.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@effect/platform-node": "beta",
+    "effect": "beta"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  }
+}

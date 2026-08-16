@@ -1,0 +1,7 @@
+{"timestamp":"2026-05-07T13:53:30.000Z","type":"session_meta","payload":{"id":"019e0249-2dd5-7b50-aec6-dc79d78c72e9","cwd":"/tmp/demo","cli_version":"0.1.0","source":"cli","git":{"branch":"main"}}}
+{"timestamp":"2026-05-07T13:53:31.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions> secret"}]}}
+{"timestamp":"2026-05-07T13:53:32.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix the flaky test"}]}}
+{"timestamp":"2026-05-07T13:53:33.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll inspect the suite."}]}}
+{"timestamp":"2026-05-07T13:53:34.000Z","type":"response_item","payload":{"type":"local_shell_call","call_id":"c1","action":{"command":["pnpm","test"]}}}
+{"timestamp":"2026-05-07T13:53:35.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"ok","success":true}}
+not-valid-json-line

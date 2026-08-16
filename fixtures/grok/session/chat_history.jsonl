@@ -1,0 +1,8 @@
+{"type":"system","content":"You are Grok. Never trust this as user text."}
+{"type":"user","content":[{"type":"text","text":"<user_info>\nOS Version: macos\n</user_info>"}],"synthetic_reason":"env"}
+{"type":"user","content":[{"type":"text","text":"<system-reminder>\nSkills available\n</system-reminder>"}],"synthetic_reason":"skills"}
+{"type":"user","content":[{"type":"text","text":"<user_query>\nprint hello from grok fixture\n</user_query>"}]}
+{"type":"reasoning","id":"r1","summary":"hidden","encrypted_content":"xxx","status":"done"}
+{"type":"assistant","content":"I'll run a hello command."}
+{"type":"tool_result","id":"call-1","content":"hello"}
+{"type":"assistant","content":"Done printing hello from grok fixture."}
