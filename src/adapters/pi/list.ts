@@ -4,6 +4,9 @@ import { resolvePiDb } from "../../platform/homes.js"
 import { querySqlite } from "../../platform/sqlite.js"
 import { withinWindow } from "../../platform/text.js"
 
+/** Hard upper bound on session rows fetched while listing (was an implicit 500). */
+export const LIST_LIMIT = 5000
+
 export const listPiSessions = Effect.fn("pi.list")(function* (opts: {
   cwd?: string | undefined
   withinMin?: number | undefined
@@ -21,7 +24,7 @@ export const listPiSessions = Effect.fn("pi.list")(function* (opts: {
   }>(
     dbPath,
     "pi",
-    "SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC LIMIT 500",
+    `SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC LIMIT ${LIST_LIMIT}`,
   )
 
   const refs: Array<SessionRef> = []

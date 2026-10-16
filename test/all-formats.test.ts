@@ -53,10 +53,11 @@ describe("capabilities matrix", () => {
       assert.equal(adapter.capabilities.list, true, `${adapter.id} list`)
       assert.equal(adapter.capabilities.decode, true, `${adapter.id} decode`)
       assert.equal(adapter.capabilities.handoff, true, `${adapter.id} handoff`)
+      assert.equal(adapter.capabilities.transplant, true, `${adapter.id} transplant`)
       assert.equal(adapter.capabilities.fidelity.list, "L0")
       assert.equal(adapter.capabilities.fidelity.decode, "L1")
       assert.equal(adapter.capabilities.fidelity.handoff, "L2")
-      assert.equal(adapter.capabilities.transplant, false)
+      assert.equal(adapter.capabilities.fidelity.transplant, "L3")
     }
   })
 })

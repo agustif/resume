@@ -1,0 +1,8 @@
+{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-10-13T19:35:00.000Z","cwd":"/tmp/claude-demo","gitBranch":"main","message":{"role":"user","content":[{"type":"text","text":"seeing the same betterstack timeout alerts"}]}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-10-13T19:36:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The timeouts are the flag refetch herd."}]}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-10-13T19:40:00.000Z","message":{"role":"user","content":[{"type":"text","text":"keep finding the root cause"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":"2026-10-13T19:41:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Pool wait, not the query."}]}}
+{"type":"system","subtype":"compact_boundary","uuid":"b1","parentUuid":"s1","timestamp":"2026-10-14T01:30:47.000Z","content":"Conversation compacted","compactMetadata":{"trigger":"auto","preservedSegment":{"headUuid":"s1","anchorUuid":"s1","tailUuid":"s1"}}}
+{"type":"user","uuid":"s1","parentUuid":null,"isCompactSummary":true,"timestamp":"2026-10-14T01:30:46.000Z","message":{"role":"user","content":[{"type":"text","text":"This session is being continued from a previous conversation that ran out of context. Summary: timeout alerts."}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"s1","timestamp":"2026-10-14T01:31:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Continuing from the summary."}]}}
+{"type":"user","uuid":"u3","parentUuid":"a3","timestamp":"2026-10-14T01:32:00.000Z","message":{"role":"user","content":[{"type":"text","text":"fix it properly"}]}}

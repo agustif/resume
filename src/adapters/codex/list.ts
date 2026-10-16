@@ -34,8 +34,7 @@ const walkRollouts = (
           }
           if (
             stat.type === "File" &&
-            CODEX_ROLLOUT_RE.test(name) &&
-            !name.endsWith(".zst")
+            CODEX_ROLLOUT_RE.test(name)
           ) {
             return [full] as ReadonlyArray<string>
           }
@@ -47,24 +46,45 @@ const walkRollouts = (
     return nested.flat()
   })
 
-const titleFromFile = (
+export interface CodexHeader {
+  readonly cwd: string | undefined
+  readonly title: string | undefined
+}
+
+/**
+ * Single header probe: one bounded stream read returning both the rollout
+ * cwd (session_meta) and a title (first real user message). Callers pick the
+ * line budget: 20 for cwd filtering, 80 for titles.
+ */
+const headerProbe = (
   path: string,
-): Effect.Effect<string | undefined, never, FileSystem.FileSystem> =>
+  maxLines: number,
+): Effect.Effect<CodexHeader, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const lines = yield* fs.stream(path).pipe(
       Stream.decodeText(),
       Stream.splitLines,
-      Stream.take(80),
+      Stream.take(maxLines),
       Stream.runCollect,
       Effect.orElseSucceed(() => [] as ReadonlyArray<string>),
     )
 
+    let cwd: string | undefined
+    let title: string | undefined
     for (const line of lines) {
       if (!line.trim()) continue
+      let rec: Record<string, unknown>
       try {
-        const rec = JSON.parse(line) as Record<string, unknown>
-        if (rec["type"] !== "response_item") continue
+        rec = JSON.parse(line) as Record<string, unknown>
+      } catch {
+        continue
+      }
+      if (rec["type"] === "session_meta" && cwd === undefined) {
+        const payload = rec["payload"] as Record<string, unknown> | undefined
+        if (typeof payload?.["cwd"] === "string") cwd = payload["cwd"]
+      }
+      if (title === undefined && rec["type"] === "response_item") {
         const payload = rec["payload"] as Record<string, unknown> | undefined
         if (!payload || payload["type"] !== "message" || payload["role"] !== "user") {
           continue
@@ -80,42 +100,15 @@ const titleFromFile = (
           ) {
             const t = String((block as Record<string, unknown>)["text"]).trim()
             if (t && !isGeneratedMetaText(t)) {
-              return t.replace(/\s+/g, " ").slice(0, 120)
+              title = t.replace(/\s+/g, " ").slice(0, 120)
+              break
             }
           }
         }
-      } catch {
-        // skip bad lines
       }
+      if (cwd !== undefined && title !== undefined) break
     }
-    return undefined
-  })
-
-const cwdFromFile = (
-  path: string,
-): Effect.Effect<string | undefined, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const lines = yield* fs.stream(path).pipe(
-      Stream.decodeText(),
-      Stream.splitLines,
-      Stream.take(20),
-      Stream.runCollect,
-      Effect.orElseSucceed(() => [] as ReadonlyArray<string>),
-    )
-    for (const line of lines) {
-      try {
-        const rec = JSON.parse(line) as Record<string, unknown>
-        if (rec["type"] === "session_meta") {
-          const payload = rec["payload"] as Record<string, unknown> | undefined
-          if (typeof payload?.["cwd"] === "string") return payload["cwd"]
-          return undefined
-        }
-      } catch {
-        // skip
-      }
-    }
-    return undefined
+    return { cwd, title }
   })
 
 export const listCodexSessions = Effect.fn("codex.list")(function* (opts: {
@@ -128,7 +121,33 @@ export const listCodexSessions = Effect.fn("codex.list")(function* (opts: {
   const exists = yield* fs.exists(home)
   if (!exists) return [] as ReadonlyArray<SessionRef>
 
-  const paths = yield* walkRollouts(home, 0)
+  // Rollouts live under sessions/ (dated subdirs), plus archived/backup
+  // roots. A populated workspaces/ tree can hold 1M+ files and must never
+  // be walked, so only known roots are recursed (plus depth-1 top-level
+  // files for legacy layouts). Full-home walk is the last resort.
+  const roots: Array<string> = []
+  for (const name of ["sessions", "archived_sessions", "backup-sessions"]) {
+    const dir = pathApi.join(home, name)
+    if (yield* fs.exists(dir)) roots.push(dir)
+  }
+  const nested = yield* Effect.forEach(
+    roots,
+    (dir) => walkRollouts(dir, 0),
+    { concurrency: 8 },
+  )
+  const paths: Array<string> = nested.flat()
+  const topNames = yield* fs
+    .readDirectory(home)
+    .pipe(Effect.orElseSucceed(() => [] as Array<string>))
+  for (const name of topNames) {
+    if (!CODEX_ROLLOUT_RE.test(name)) continue
+    const full = pathApi.join(home, name)
+    const stat = yield* fs.stat(full).pipe(Effect.orElseSucceed(() => undefined))
+    if (stat?.type === "File" && !paths.includes(full)) paths.push(full)
+  }
+  if (paths.length === 0 && roots.length === 0) {
+    paths.push(...(yield* walkRollouts(home, 0)))
+  }
   const now = yield* Clock.currentTimeMillis
 
   // Pass 1: cheap metadata (stat only). Avoid opening every rollout for title.
@@ -144,8 +163,9 @@ export const listCodexSessions = Effect.fn("codex.list")(function* (opts: {
           return Option.none()
         }
         if (opts.cwd) {
-          const cwd = yield* cwdFromFile(path)
-          if (cwd !== undefined && cwd !== opts.cwd) return Option.none()
+          // One 20-line probe per file; session_meta is normally the first record.
+          const header = yield* headerProbe(path, 20)
+          if (header.cwd !== undefined && header.cwd !== opts.cwd) return Option.none()
         }
         const base = pathApi.basename(path)
         const match = CODEX_ROLLOUT_RE.exec(base)
@@ -160,13 +180,20 @@ export const listCodexSessions = Effect.fn("codex.list")(function* (opts: {
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
 
   // Pass 2: title only for the most recent sessions (list UX), not all 10k+.
-  const titleTargets = new Set(sorted.slice(0, TITLE_PEEK_LIMIT).map((r) => r.path))
+  // Compressed rollouts are stat-only here: decompressing every .zst for a
+  // title would cost a zstd subprocess per file.
+  const titleTargets = new Set(
+    sorted
+      .slice(0, TITLE_PEEK_LIMIT)
+      .map((r) => r.path)
+      .filter((p) => !p.endsWith(".zst")),
+  )
   const titles = yield* Effect.forEach(
     [...titleTargets],
     (path) =>
       Effect.gen(function* () {
-        const title = yield* titleFromFile(path)
-        return [path, title] as const
+        const header = yield* headerProbe(path, 80)
+        return [path, header.title] as const
       }),
     { concurrency: 16 },
   )

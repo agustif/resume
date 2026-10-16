@@ -1,8 +1,9 @@
-import { Effect, FileSystem, Path, Schema } from "effect"
+import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { DecodeFailed } from "../../core/errors.js"
 import { extractUserText, isGeneratedMetaText } from "../../core/safety.js"
 import {
   AssistantTurn,
+  IR_VERSION,
   Session,
   SessionId,
   SessionMeta,
@@ -15,7 +16,7 @@ import {
   type Turn,
 } from "../../ir/index.js"
 import { readJsonlRecords } from "../../platform/jsonl.js"
-import { contentText, isRecord, oneLine } from "../../platform/text.js"
+import { canonicalToolFor, contentText, isRecord, oneLine } from "../../platform/text.js"
 
 const renderGrokRecord = (
   record: Record<string, unknown>,
@@ -41,15 +42,18 @@ const renderGrokRecord = (
       for (const call of calls) {
         if (!isRecord(call)) continue
         const fn = isRecord(call["function"]) ? call["function"] : call
+        const name =
+          typeof fn["name"] === "string"
+            ? fn["name"]
+            : typeof call["name"] === "string"
+              ? call["name"]
+              : "tool"
+        const canonical = canonicalToolFor(name)
         toolCalls.push(
           new ToolCall({
             ...(typeof call["id"] === "string" ? { id: call["id"] } : {}),
-            name:
-              typeof fn["name"] === "string"
-                ? fn["name"]
-                : typeof call["name"] === "string"
-                  ? call["name"]
-                  : "tool",
+            name,
+            ...(canonical !== undefined ? { canonical } : {}),
             argsPreview: oneLine(fn["arguments"] ?? call["input"] ?? {}, maxToolChars),
             inert: true,
           }),
@@ -83,11 +87,14 @@ const renderGrokRecord = (
   }
 
   if (type === "function_call" || type === "tool_use") {
+    const name = typeof record["name"] === "string" ? record["name"] : "tool"
+    const canonical = canonicalToolFor(name)
     return new AssistantTurn({
       toolCalls: [
         new ToolCall({
           ...(typeof record["id"] === "string" ? { id: record["id"] } : {}),
-          name: typeof record["name"] === "string" ? record["name"] : "tool",
+          name,
+          ...(canonical !== undefined ? { canonical } : {}),
           argsPreview: oneLine(record["input"] ?? record["arguments"] ?? {}, maxToolChars),
           inert: true,
         }),
@@ -114,6 +121,12 @@ export const decodeGrokSession = Effect.fn("grok.decodeSession")(function* (
       reason: "missing chat_history.jsonl",
     })
   }
+
+  // The transcript file mtime is the only timestamp Grok records carry; use it for
+  // both createdAt and updatedAt, and skip the fields when stat is unavailable.
+  const historyStat = yield* fs.stat(historyPath).pipe(Effect.orElseSucceed(() => undefined))
+  const historyMtime = historyStat ? Option.getOrUndefined(historyStat.mtime) : undefined
+  const historyTimestamp = historyMtime ? historyMtime.toISOString() : undefined
 
   const { records, malformed } = yield* readJsonlRecords(historyPath, "grok")
   const warnings: Array<Warning> = []
@@ -154,12 +167,15 @@ export const decodeGrokSession = Effect.fn("grok.decodeSession")(function* (
   const sessionId = pathApi.basename(sessionDir)
 
   return new Session({
-    irVersion: "0.1.0",
+    irVersion: IR_VERSION,
     id: Schema.decodeUnknownSync(SessionId)(sessionId),
     source: new SessionSource({ format: "grok", path: sessionDir }),
     meta: new SessionMeta({
       ...(title !== undefined ? { title } : {}),
       ...(cwd !== undefined ? { cwd } : {}),
+      ...(historyTimestamp !== undefined
+        ? { createdAt: historyTimestamp, updatedAt: historyTimestamp }
+        : {}),
     }),
     turns,
     warnings,

@@ -1,7 +1,9 @@
 import { Effect, Schema } from "effect"
+import { DecodeFailed } from "../../core/errors.js"
 import { extractUserText, isGeneratedMetaText } from "../../core/safety.js"
 import {
   AssistantTurn,
+  IR_VERSION,
   Session,
   SessionId,
   SessionMeta,
@@ -14,7 +16,7 @@ import {
   type Turn,
 } from "../../ir/index.js"
 import { querySqlite } from "../../platform/sqlite.js"
-import { isRecord, oneLine } from "../../platform/text.js"
+import { canonicalToolFor, isRecord, oneLine } from "../../platform/text.js"
 
 const parseJson = (raw: unknown): unknown => {
   if (typeof raw !== "string") return raw
@@ -55,6 +57,16 @@ export const decodeOpenCodeSession = Effect.fn("opencode.decodeSession")(functio
     "SELECT id, session_id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC",
     [sessionId],
   )
+
+  // A missing session row with zero messages means the id does not exist — failing
+  // loudly beats returning an empty session (which callers would hand off as "no work").
+  if (sessionRow === undefined && messages.length === 0) {
+    return yield* new DecodeFailed({
+      format: "opencode",
+      path: dbPath,
+      reason: `unknown session id: ${sessionId}`,
+    })
+  }
 
   const parts = yield* querySqlite<{
     id: string
@@ -117,10 +129,12 @@ export const decodeOpenCodeSession = Effect.fn("opencode.decodeSession")(functio
           const name = typeof part["tool"] === "string" ? part["tool"] : "tool"
           const callId = typeof part["callID"] === "string" ? part["callID"] : undefined
           const state = isRecord(part["state"]) ? part["state"] : {}
+          const canonical = canonicalToolFor(name)
           toolCalls.push(
             new ToolCall({
               ...(callId !== undefined ? { id: callId } : {}),
               name,
+              ...(canonical !== undefined ? { canonical } : {}),
               argsPreview: oneLine(state["input"] ?? {}, maxToolChars),
               inert: true,
             }),
@@ -173,7 +187,7 @@ export const decodeOpenCodeSession = Effect.fn("opencode.decodeSession")(functio
       : undefined
 
   return new Session({
-    irVersion: "0.1.0",
+    irVersion: IR_VERSION,
     id: Schema.decodeUnknownSync(SessionId)(sessionId),
     source: new SessionSource({ format: "opencode", path: `${dbPath}#${sessionId}` }),
     meta: new SessionMeta({

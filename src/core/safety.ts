@@ -3,6 +3,7 @@ import type { Session, Turn, Warning } from "../ir/index.js"
 import {
   AssistantTurn,
   Session as SessionSchema,
+  SubagentRun,
   UserTurn,
   Warning as WarningSchema,
 } from "../ir/index.js"
@@ -27,7 +28,13 @@ export const isGeneratedMetaText = (text: string): boolean => {
     t.includes("<user_info>") ||
     t.startsWith("<environment_context") ||
     t.startsWith("<user_instructions") ||
-    t.startsWith("<manually_attached_skills")
+    t.startsWith("<manually_attached_skills") ||
+    t.startsWith("<task-notification") ||
+    t.startsWith("<bash-input") ||
+    t.startsWith("<bash-stdout") ||
+    t.startsWith("<local-command") ||
+    t.startsWith("<local-command-caveat") ||
+    t.startsWith("Base directory for this skill:")
   )
 }
 
@@ -74,20 +81,27 @@ const sanitizeTurn = (turn: Turn): Turn | undefined =>
     Boundary: (t) => t,
   })
 
+/** Drop generated-meta and empty turns. The count is how many were removed. */
+export const sanitizeTurnList = (
+  turns: ReadonlyArray<Turn>,
+): { turns: Array<Turn>; dropped: number } => {
+  const next: Array<Turn> = []
+  let dropped = 0
+  for (const turn of turns) {
+    const sanitized = sanitizeTurn(turn)
+    if (sanitized === undefined) dropped += 1
+    else next.push(sanitized)
+  }
+  return { turns: next, dropped }
+}
+
 /**
  * Safety filter on IR. Never executes foreign tools; drops generated meta text.
  */
 export const sanitizeSession = (session: Session): Session => {
-  const turns: Array<Turn> = []
-  let dropped = 0
-  for (const turn of session.turns) {
-    const next = sanitizeTurn(turn)
-    if (next === undefined) {
-      dropped += 1
-      continue
-    }
-    turns.push(next)
-  }
+  const sanitized = sanitizeTurnList(session.turns)
+  const turns = sanitized.turns
+  const dropped = sanitized.dropped
 
   const warnings: Array<Warning> = [...session.warnings]
   if (dropped > 0) {
@@ -99,9 +113,18 @@ export const sanitizeSession = (session: Session): Session => {
     )
   }
 
+  const subagents = session.subagents?.map(
+    (agent) =>
+      new SubagentRun({
+        ...agent,
+        turns: sanitizeTurnList(agent.turns).turns,
+      }),
+  )
+
   return new SessionSchema({
     ...session,
     turns,
     warnings,
+    ...(subagents !== undefined ? { subagents } : {}),
   })
 }

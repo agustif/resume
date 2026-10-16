@@ -1,8 +1,9 @@
-import { Effect, FileSystem, Path, Schema } from "effect"
+import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { DecodeFailed } from "../../core/errors.js"
 import { extractUserText, isGeneratedMetaText } from "../../core/safety.js"
 import {
   AssistantTurn,
+  IR_VERSION,
   Session,
   SessionId,
   SessionMeta,
@@ -15,7 +16,7 @@ import {
   type Turn,
 } from "../../ir/index.js"
 import { querySqlite } from "../../platform/sqlite.js"
-import { contentText, isRecord, oneLine } from "../../platform/text.js"
+import { canonicalToolFor, contentText, isRecord, oneLine } from "../../platform/text.js"
 
 const decodeBlobText = (data: unknown): string | undefined => {
   if (typeof data === "string") return data
@@ -62,10 +63,13 @@ const renderJsonMessage = (
       for (const call of calls) {
         if (!isRecord(call)) continue
         const fn = isRecord(call["function"]) ? call["function"] : call
+        const name = typeof fn["name"] === "string" ? fn["name"] : "tool"
+        const canonical = canonicalToolFor(name)
         toolCalls.push(
           new ToolCall({
             ...(typeof call["id"] === "string" ? { id: call["id"] } : {}),
-            name: typeof fn["name"] === "string" ? fn["name"] : "tool",
+            name,
+            ...(canonical !== undefined ? { canonical } : {}),
             argsPreview: oneLine(fn["arguments"] ?? {}, maxToolChars),
             inert: true,
           }),
@@ -78,10 +82,13 @@ const renderJsonMessage = (
       for (const block of content) {
         if (!isRecord(block)) continue
         if (block["type"] === "tool_use" || block["type"] === "tool_call") {
+          const name = typeof block["name"] === "string" ? block["name"] : "tool"
+          const canonical = canonicalToolFor(name)
           toolCalls.push(
             new ToolCall({
               ...(typeof block["id"] === "string" ? { id: block["id"] } : {}),
-              name: typeof block["name"] === "string" ? block["name"] : "tool",
+              name,
+              ...(canonical !== undefined ? { canonical } : {}),
               argsPreview: oneLine(block["input"] ?? block["arguments"] ?? {}, maxToolChars),
               inert: true,
             }),
@@ -127,6 +134,12 @@ export const decodeCursorStore = Effect.fn("cursor.decodeStore")(function* (
     })
   }
 
+  // store.db mtime is the best available session timestamp for Cursor sessions;
+  // use it for both createdAt and updatedAt, skipping the fields when stat fails.
+  const storeStat = yield* fs.stat(storePath).pipe(Effect.orElseSucceed(() => undefined))
+  const storeMtime = storeStat ? Option.getOrUndefined(storeStat.mtime) : undefined
+  const storeTimestamp = storeMtime ? storeMtime.toISOString() : undefined
+
   const blobs = yield* querySqlite<{ id: string; data: unknown }>(
     storePath,
     "cursor",
@@ -161,6 +174,26 @@ export const decodeCursorStore = Effect.fn("cursor.decodeStore")(function* (
   let jsonMessages = 0
   let skippedBinary = 0
 
+  // One blob may hold a single record or a JSON array of records; render each element.
+  const ingestElement = (value: unknown): boolean => {
+    if (isRecord(value) && typeof value["role"] === "string") {
+      const turn = renderJsonMessage(value, maxToolChars)
+      if (turn) {
+        turns.push(turn)
+        jsonMessages += 1
+      }
+      return true
+    }
+    if (typeof value === "string" && (/^\s*USER:/i.test(value) || value.includes("<user_query>"))) {
+      const extracted = extractUserText(value)
+      if (extracted) {
+        turns.push(new UserTurn({ text: extracted }))
+        return true
+      }
+    }
+    return false
+  }
+
   for (const blob of blobs) {
     const text = decodeBlobText(blob.data)
     if (!text) {
@@ -168,20 +201,15 @@ export const decodeCursorStore = Effect.fn("cursor.decodeStore")(function* (
       continue
     }
     const parsed = tryParseJson(text)
-    if (!isRecord(parsed) || typeof parsed["role"] !== "string") {
-      // plain USER: / " USER:" blob lines (Cursor sometimes stores these raw)
-      if (/^\s*USER:/i.test(text) || text.includes("<user_query>")) {
-        const extracted = extractUserText(text)
-        if (extracted) turns.push(new UserTurn({ text: extracted }))
-      } else {
-        skippedBinary += 1
-      }
-      continue
+    // Cursor sometimes packs several message records into one blob as a JSON array.
+    const elements = Array.isArray(parsed) ? parsed : [parsed]
+    let handled = false
+    for (const element of elements) {
+      if (ingestElement(element)) handled = true
     }
-    const turn = renderJsonMessage(parsed, maxToolChars)
-    if (turn) {
-      turns.push(turn)
-      jsonMessages += 1
+    if (!handled) {
+      // plain USER: / " USER:" blob lines (Cursor sometimes stores these raw)
+      if (!ingestElement(text)) skippedBinary += 1
     }
   }
 
@@ -210,11 +238,14 @@ export const decodeCursorStore = Effect.fn("cursor.decodeStore")(function* (
   }
 
   return new Session({
-    irVersion: "0.1.0",
+    irVersion: IR_VERSION,
     id: Schema.decodeUnknownSync(SessionId)(sessionId),
     source: new SessionSource({ format: "cursor", path: storePath }),
     meta: new SessionMeta({
       ...(title !== undefined ? { title } : {}),
+      ...(storeTimestamp !== undefined
+        ? { createdAt: storeTimestamp, updatedAt: storeTimestamp }
+        : {}),
     }),
     turns,
     warnings,

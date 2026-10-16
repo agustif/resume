@@ -21,6 +21,10 @@ export class HandoffPack extends Schema.Class<HandoffPack>("HandoffPack")({
   lastAssistantAction: Schema.optionalKey(Schema.String),
   turnCount: Schema.Number,
   recentTurns: Schema.Array(Schema.String),
+  /** Sanitized user turns, one line each, oldest first. */
+  userRequests: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** One line per sidechain agent: id, description, last assistant text. */
+  subagents: Schema.optionalKey(Schema.Array(Schema.String)),
   warnings: Schema.Array(HandoffWarning),
   safetyNote: Schema.String,
 }) {}

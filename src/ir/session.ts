@@ -1,6 +1,9 @@
 import { Schema } from "effect"
 import { FormatId } from "./formats.js"
 
+/** Shared IR version stamp. Bump when the IR schema shape changes. */
+export const IR_VERSION = "0.1.0" as const
+
 export const SessionId = Schema.String.pipe(Schema.brand("SessionId"))
 export type SessionId = typeof SessionId.Type
 
@@ -45,7 +48,7 @@ export class ToolResultTurn extends Schema.TaggedClass<ToolResultTurn>()("ToolRe
 }) {}
 
 export class BoundaryTurn extends Schema.TaggedClass<BoundaryTurn>()("Boundary", {
-  kind: Schema.Literals(["compact", "rollback", "snip"]),
+  kind: Schema.Literals(["compact", "rollback", "snip", "away", "status"]),
   note: Schema.optionalKey(Schema.String),
 }) {}
 
@@ -76,13 +79,29 @@ export class SessionMeta extends Schema.Class<SessionMeta>("SessionMeta")({
   updatedAt: Schema.optionalKey(Schema.String),
 }) {}
 
+/** One Claude sidechain transcript (`<session>/subagents/agent-*.jsonl`). */
+export class SubagentRun extends Schema.Class<SubagentRun>("SubagentRun")({
+  id: Schema.String,
+  path: Schema.String,
+  agentType: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+  toolUseId: Schema.optionalKey(Schema.String),
+  parentAgentId: Schema.optionalKey(Schema.String),
+  spawnDepth: Schema.optionalKey(Schema.Number),
+  isFork: Schema.optionalKey(Schema.Boolean),
+  updatedAt: Schema.optionalKey(Schema.String),
+  turns: Schema.Array(Turn),
+  warnings: Schema.Array(Warning),
+}) {}
+
 export class Session extends Schema.Class<Session>("Session")({
-  irVersion: Schema.Literal("0.1.0"),
+  irVersion: Schema.Literal(IR_VERSION),
   id: SessionId,
   source: SessionSource,
   meta: SessionMeta,
   turns: Schema.Array(Turn),
   warnings: Schema.Array(Warning),
+  subagents: Schema.optionalKey(Schema.Array(SubagentRun)),
 }) {}
 
 export class SessionRef extends Schema.Class<SessionRef>("SessionRef")({

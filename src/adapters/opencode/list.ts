@@ -4,6 +4,9 @@ import { resolveOpenCodeDb } from "../../platform/homes.js"
 import { querySqlite } from "../../platform/sqlite.js"
 import { withinWindow } from "../../platform/text.js"
 
+/** Hard upper bound on session rows fetched while listing (was an implicit 500). */
+export const LIST_LIMIT = 5000
+
 export const listOpenCodeSessions = Effect.fn("opencode.list")(function* (opts: {
   cwd?: string | undefined
   withinMin?: number | undefined
@@ -21,7 +24,7 @@ export const listOpenCodeSessions = Effect.fn("opencode.list")(function* (opts: 
   }>(
     dbPath,
     "opencode",
-    "SELECT id, directory, title, time_updated FROM session ORDER BY time_updated DESC LIMIT 500",
+    `SELECT id, directory, title, time_updated FROM session ORDER BY time_updated DESC LIMIT ${LIST_LIMIT}`,
   )
 
   const refs: Array<SessionRef> = []

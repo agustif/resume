@@ -1,0 +1,2 @@
+{"type":"user","uuid":"su1","isSidechain":true,"timestamp":"2026-05-07T12:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"Research the timeout alerts"}]}}
+{"type":"assistant","uuid":"sa1","parentUuid":"su1","isSidechain":true,"timestamp":"2026-05-07T12:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The alerts come from the gateway timeout."}]}}

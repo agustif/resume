@@ -63,3 +63,17 @@ export const resolvePiDb = Effect.fn("platform.resolvePiDb")(function* () {
   const home = yield* resolveHome()
   return pathApi.join(home, ".pi", ".crush", "crush.db")
 })
+
+/**
+ * Writable data dir for resume's own artifacts (search index).
+ * Never inside a repo: XDG data home or ~/.local/share/resume.
+ */
+export const resolveResumeDataDir = Effect.fn("platform.resolveResumeDataDir")(function* () {
+  const pathApi = yield* Path.Path
+  const configured = yield* Config.option(Config.string("RESUME_DATA_DIR"))
+  if (Option.isSome(configured)) return configured.value
+  const xdg = yield* Config.option(Config.string("XDG_DATA_HOME"))
+  if (Option.isSome(xdg)) return pathApi.join(xdg.value, "resume")
+  const home = yield* resolveHome()
+  return pathApi.join(home, ".local", "share", "resume")
+})

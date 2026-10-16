@@ -1,7 +1,9 @@
 import { Effect, Schema } from "effect"
+import { DecodeFailed } from "../../core/errors.js"
 import { extractUserText, isGeneratedMetaText } from "../../core/safety.js"
 import {
   AssistantTurn,
+  IR_VERSION,
   Session,
   SessionId,
   SessionMeta,
@@ -14,7 +16,7 @@ import {
   type Turn,
 } from "../../ir/index.js"
 import { querySqlite } from "../../platform/sqlite.js"
-import { isRecord, oneLine } from "../../platform/text.js"
+import { canonicalToolFor, isRecord, oneLine } from "../../platform/text.js"
 
 const parseJson = (raw: unknown): unknown => {
   if (typeof raw !== "string") return raw
@@ -63,6 +65,16 @@ export const decodePiSession = Effect.fn("pi.decodeSession")(function* (
     [sessionId],
   )
 
+  // Unknown session id (no session row AND no messages) is a hard failure, not an
+  // empty session; a real-but-empty session still yields the warning below.
+  if (sessionRow === undefined && messages.length === 0) {
+    return yield* new DecodeFailed({
+      format: "pi",
+      path: dbPath,
+      reason: `unknown session id: ${sessionId}`,
+    })
+  }
+
   const turns: Array<Turn> = []
   const warnings: Array<Warning> = []
 
@@ -95,15 +107,18 @@ export const decodePiSession = Effect.fn("pi.decodeSession")(function* (
           if (t && !isGeneratedMetaText(t)) texts.push(t)
         } else if (type === "tool" || type === "toolCall" || type === "functionCall") {
           const data = isRecord(part["data"]) ? part["data"] : part
+          const name =
+            typeof data["name"] === "string"
+              ? data["name"]
+              : typeof data["tool"] === "string"
+                ? data["tool"]
+                : "tool"
+          const canonical = canonicalToolFor(name)
           toolCalls.push(
             new ToolCall({
               ...(typeof data["id"] === "string" ? { id: data["id"] } : {}),
-              name:
-                typeof data["name"] === "string"
-                  ? data["name"]
-                  : typeof data["tool"] === "string"
-                    ? data["tool"]
-                    : "tool",
+              name,
+              ...(canonical !== undefined ? { canonical } : {}),
               argsPreview: oneLine(data["arguments"] ?? data["input"] ?? {}, maxToolChars),
               inert: true,
             }),
@@ -154,7 +169,7 @@ export const decodePiSession = Effect.fn("pi.decodeSession")(function* (
   }
 
   return new Session({
-    irVersion: "0.1.0",
+    irVersion: IR_VERSION,
     id: Schema.decodeUnknownSync(SessionId)(sessionId),
     source: new SessionSource({ format: "pi", path: `${dbPath}#${sessionId}` }),
     meta: new SessionMeta({

@@ -2,6 +2,7 @@
   "name": "resume-cli",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Universal coding-agent session interchange CLI (handoff / transplant)",
   "bin": {
@@ -16,7 +17,7 @@
     "prepare": "./scripts/prepare-effect.sh"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.13.0 || >=23.4.0"
   },
   "dependencies": {
     "@effect/platform-node": "beta",

@@ -1,4 +1,47 @@
 /** Shared text helpers for adapters. */
+import type { CanonicalTool } from "../ir/session.js"
+
+const SHELL_TOOLS = new Set([
+  "bash",
+  "shell",
+  "local_shell",
+  "terminal",
+  "exec",
+  "run_command",
+  "command",
+  "powershell",
+  "zsh",
+  "sh",
+])
+
+const READ_TOOLS = new Set(["read", "cat", "view", "open", "show_file"])
+
+const EDIT_TOOLS = new Set([
+  "edit",
+  "write",
+  "create",
+  "apply_patch",
+  "str_replace",
+  "file_write",
+])
+
+const SEARCH_TOOLS = new Set(["grep", "glob", "search", "find", "rg", "code_search"])
+
+/**
+ * Map a foreign tool name to its canonical family, case-insensitively.
+ * Names prefixed `mcp__` / `mcp-` are MCP tools. Returns `undefined` when no
+ * family matches; adapters then leave `canonical` unset.
+ */
+export const canonicalToolFor = (name: string): CanonicalTool | undefined => {
+  const normalized = name.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (normalized.startsWith("mcp__") || normalized.startsWith("mcp-")) return "mcp"
+  if (SHELL_TOOLS.has(normalized)) return "shell"
+  if (READ_TOOLS.has(normalized)) return "read"
+  if (EDIT_TOOLS.has(normalized)) return "edit"
+  if (SEARCH_TOOLS.has(normalized)) return "search"
+  return undefined
+}
 
 export const oneLine = (value: unknown, limit: number): string => {
   let raw: string
